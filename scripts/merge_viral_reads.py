@@ -8,8 +8,6 @@ from collections import Counter
 from distutils.version import LooseVersion
 
 
-from sets import Set
-
 def is_float(value):
   try: 
     float(value)
@@ -125,25 +123,25 @@ else:
 
 unknownFile = pysam.Samfile(args.unknownName[0], 'rb')
 outputFile = pysam.Samfile(args.outputName[0], 'wb', header=references)
-scores = read_scores_file(args.reducedName[0])
-mapping = read_map(args.mapName[0], scores)  
+# scores = read_scores_file(args.reducedName[0])
+# mapping = read_map(args.mapName[0], scores)
 for read in unknownFile.fetch(until_eof=True):
-  if read.qname in mapping and mapping[read.qname][1] < args.threshold:
-    if read.is_unmapped:      
-      read.tid = len(references['SQ'])-1
-      read.is_unmapped = False
-      read.pos = 1      
-      read.cigartuples = [(0,read.qlen)]
+  # if read.qname in mapping and mapping[read.qname][1] < args.threshold:
+  if read.is_unmapped:
+    read.tid = len(references['SQ'])-1
+    read.is_unmapped = False
+    read.pos = 1
+    read.cigartuples = [(0,read.qlen)]
 #       matched = int(abs(mapping[read.qname][6]-mapping[read.qname][5]))+1
 #       if matched == read.qlen:
 #         read.cigartuples = [(0,matched)]
 #       else:
 #         read.cigartuples = [(0,matched),(4,read.qlen-matched)]
-    else:
-      read.mate_is_unmapped = False
-      read.mpos = 1      
-      read.mrnm = len(references['SQ'])-1
-    outputFile.write(read)
+  else:
+    read.mate_is_unmapped = False
+    read.mpos = 1
+    read.mrnm = len(references['SQ'])-1
+  outputFile.write(read)
 
 for read in transFile.fetch(until_eof=True):
   outputFile.write(read)

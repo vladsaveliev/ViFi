@@ -6,8 +6,6 @@ import argparse
 from time import clock
 from collections import Counter
 
-from sets import Set
-
 parser = \
   argparse.ArgumentParser(description='Extract reads with one end mapping to hg19 reference and other end mapping to viral genome'
               )
@@ -91,23 +89,23 @@ transFile = pysam.Samfile(opts.transName[0], 'wb', template=bamFile)
 viralFile = pysam.Samfile(opts.viralName[0], 'wb', template=bamFile)
 unknownFile = pysam.Samfile(opts.unknownName[0], 'wb', template=bamFile)
 chrom_list = {}
-foo = [chrom_list.setdefault('human' if ref.find('chr') == 0 else 'viral',Set()).add(ref) for ref in bamFile.references]
+foo = [chrom_list.setdefault('human' if ref.find('chr') == 0 else 'viral',set()).add(ref) for ref in bamFile.references]
 if opts.chrom_list is not None:
   chrom_list = {}
   input = open(opts.chrom_list[0], 'r')
-  [chrom_list.setdefault('human',Set()).add(l) for l in input.next().strip().split()]
-  #[chrom_list.setdefault('viral',Set()).add(l) for l in input.next().strip().split(' ')]
+  [chrom_list.setdefault('human',set()).add(l) for l in input.next().strip().split()]
+  #[chrom_list.setdefault('viral',set()).add(l) for l in input.next().strip().split(' ')]
 miscFile = None
 if (opts.miscName is not None):
   miscFile = pysam.Samfile(opts.miscName[0], 'wb', template=bamFile)  
 
 qname = ''
-q1ref = Set([])
-q2ref = Set([])
+q1ref = set([])
+q2ref = set([])
 q1aligns = []
 q2aligns = []
 
-#hg19refs = Set(map(lambda x: 'chr' + str(x), range(1, 23) + ['X', 'Y',
+#hg19refs = set(map(lambda x: 'chr' + str(x), range(1, 23) + ['X', 'Y',
 #         'M']))
 
 transReads = 0
@@ -120,19 +118,19 @@ totalaligns = 0
 for a in bamFile:
   totalaligns += 1
   if a.qname != qname and qname != '':
-    if len([b for b in q1aligns if not b.is_secondary and not b.is_supplementary]) != 1 \
-      or len([b for b in q2aligns if not b.is_secondary and not b.is_supplementary]) != 1:
-      print 'No primary alignment', a.qname
-      print [(b, str(b)) for b in q1aligns if not b.is_secondary]
-      print [(b, str(b)) for b in q2aligns if not b.is_secondary]
+    if len([b for b in q1aligns if not b.is_secondary and not b.is_supplementary]) != 1 or \
+       len([b for b in q2aligns if not b.is_secondary and not b.is_supplementary]) != 1:
+      print('No primary alignment', a.qname)
+      print([(b, str(b)) for b in q1aligns if not b.is_secondary])
+      print([(b, str(b)) for b in q2aligns if not b.is_secondary])
       exit()
     trans = False
     viral = False
     unknown = False
     totalReads += 1
     if totalReads % 100000 == 0:
-      print clock(), totalReads, 'reads done: #(Trans reads) =', \
-        transReads, viralReads, a.qname, qname
+      print(clock(), totalReads, 'reads done: #(Trans reads) =', \
+        transReads, viralReads, a.qname, qname)
     len_q1ref = len(chrom_list['human'].intersection(q1ref))
     len_q2ref = len(chrom_list['human'].intersection(q2ref))
     if len_q1ref > 0 \
@@ -160,28 +158,33 @@ for a in bamFile:
         viralFile.write(b)
     if viral == False and trans == False:
       #At least one read maps to human and at least one read is unmapped
-      if (len([read for read in q1aligns if not read.is_unmapped and bamFile.references[read.tid] in chrom_list['human']])+len([read for read in q2aligns if not read.is_unmapped and bamFile.references[read.tid] in chrom_list['human']])) > 0 and (len([read for read in q2aligns if read.is_unmapped]) + len([read for read in q1aligns if read.is_unmapped])) > 0:
+      if (len([read for read in q1aligns if not read.is_unmapped and bamFile.references[read.tid] in chrom_list['human']]) +
+          len([read for read in q2aligns if not read.is_unmapped and bamFile.references[read.tid] in chrom_list['human']])) > 0 \
+              and (len([read for read in q2aligns if read.is_unmapped]) +
+                   len([read for read in q1aligns if read.is_unmapped])) > 0:
         unknownReads += 1
         for b in q1aligns + q2aligns:
           seq = Counter(q1aligns[0].seq + q2aligns[0].seq)
           if 'N' in seq and seq['N'] >= 5:
             continue
           unknownFile.write(b)
-      if (miscFile is not None and len([read for read in q2aligns if read.is_unmapped]) + len([read for read in q1aligns if read.is_unmapped])) >= 2:
+      if miscFile is not None \
+              and len([read for read in q2aligns if read.is_unmapped]) + \
+                  len([read for read in q1aligns if read.is_unmapped]) >= 2:
         for b in q1aligns + q2aligns:
           seq = Counter(q1aligns[0].seq + q2aligns[0].seq)
           if 'N' in seq and seq['N'] >= 5:
             continue
           miscFile.write(b)
-      
+
 
   if a.qname != qname:
     # print qname, hg19refs, q1ref, q2ref, hg19refs.intersection(q1ref), hg19refs.intersection(q2ref)
     qname = a.qname
     q1aligns = []
     q2aligns = []
-    q1ref = Set([])
-    q2ref = Set([])
+    q1ref = set([])
+    q2ref = set([])
   if a.is_read1:
     q1aligns.append(a)
     if not a.is_unmapped and not a.mate_is_unmapped and a.tid != -1:
@@ -223,14 +226,27 @@ if viral == True:
     viralFile.write(b)
 if viral == False and trans == False:
   #At least one read maps to human and at least one read is unmapped
-  if (len([read for read in q1aligns if not read.is_unmapped and bamFile.references[read.tid] in chrom_list['human']])+len([read for read in q2aligns if not read.is_unmapped and bamFile.references[read.tid] in chrom_list['human']])) > 0 and (len([read for read in q2aligns if read.is_unmapped]) + len([read for read in q1aligns if read.is_unmapped])) > 0:
+  if (len([read for read in q1aligns
+           if not read.is_unmapped
+              and bamFile.references[read.tid] in chrom_list['human']]
+          ) +
+      len([read for read in q2aligns
+           if not read.is_unmapped
+              and bamFile.references[read.tid] in chrom_list['human']])
+          )\
+      > 0 \
+      and \
+        len([read for read in q2aligns if read.is_unmapped]) + \
+        len([read for read in q1aligns if read.is_unmapped]) > 0:
     unknownReads += 1
     for b in q1aligns + q2aligns:
       seq = Counter(q1aligns[0].seq + q2aligns[0].seq)
       if 'N' in seq and seq['N'] >= 5:
         continue
       unknownFile.write(b)
-  if (miscFile is not None and len([read for read in q2aligns if read.is_unmapped]) + len([read for read in q1aligns if read.is_unmapped])) == 0:
+  if miscFile is not None \
+          and len([read for read in q2aligns if read.is_unmapped]) + \
+              len([read for read in q1aligns if read.is_unmapped]) == 0:
     for b in q1aligns + q2aligns:
       seq = Counter(q1aligns[0].seq + q2aligns[0].seq)
       if 'N' in seq and seq['N'] >= 5:
@@ -243,4 +259,4 @@ viralFile.close()
 unknownFile.close()
 if miscFile is not None:
   miscFile.close()
-print totalReads, transReads, viralReads
+print(totalReads, transReads, viralReads)

@@ -2,8 +2,12 @@
 
 #Builds a collection of HMMs from an existing alignment and tree
 
-import argparse, pysam, copy, dendropy, os
+import argparse, pysam, copy, dendropy, os, sys
 from dendropy import Tree
+
+def run_cmd(cmd):
+    print(cmd)
+    os.system(cmd)
 
 def decompose_tree(tree, max_size = 10, tree_map = {}, decomposition = 'hierarchical' ):
   """
@@ -40,12 +44,12 @@ def build_hmms(tree_map, alignment_file, output_dir, prefix, keep_alignment):
     out_file_prefix = "%s/%s.%d" % (output_dir,prefix,tree)
     align_file = "%s.aln" % (out_file_prefix)
     names = [n.taxon.label for n in tree_map[tree].leaf_nodes()]
-    pairs = [(k,v) for (k,v) in alignment.items() if k.label in names]
+    pairs = [(k,v) for (k,v) in list(alignment.items()) if k.label in names]
     output = open(align_file, 'w')
     for (k,v) in pairs:
       output.write('>%s\n%s\n' % (k.label, str(v)))
     output.close()
-    os.system('hmmbuild %s.hmmbuild %s.aln' % (out_file_prefix, out_file_prefix))
+    run_cmd('hmmbuild %s.hmmbuild %s.aln' % (out_file_prefix, out_file_prefix))
     if not keep_alignment:
       os.remove('%s.aln' % out_file_prefix)
 
@@ -75,8 +79,8 @@ parser.add_argument('--decomposition', dest='decomposition',
 arg = parser.parse_args()
 tree = Tree.get(file=open(arg.tree_file, 'r'), schema="newick", preserve_underscores=True)
 tree_map = {}
-print "Decomposing Tree"
+print("Decomposing Tree")
 max_size = max(10, int(arg.max_size*len(tree.leaf_nodes())))
 decompose_tree(tree, max_size, tree_map = tree_map, decomposition=arg.decomposition)
-print "Building HMMs"
+print("Building HMMs")
 build_hmms(tree_map, arg.alignment_file, arg.output_dir, arg.prefix, arg.keep_alignment)

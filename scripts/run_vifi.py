@@ -1,7 +1,14 @@
+import subprocess
 import sys, os, time
 import argparse
 import tempfile,shutil
+from os.path import isfile
+from ngs_utils import logger
 
+
+def run_cmd(cmd):
+    logger.info(cmd)
+    subprocess.run(cmd, shell=True)
 
 
 def parse_args(reference_dir):
@@ -41,7 +48,7 @@ def parse_args(reference_dir):
   #Build input_string for docker run as well as vifi_args, as well as verify all options
   input_string = ""
   vifi_string = ""
-  
+
   #This block verifies the existence of the input data, as well as making sure that either
   #the BAM file or the FASTQ files are given as input
   if options.bamfile is not None and (options.forward is not None or options.reverse is not None) :     
@@ -106,12 +113,12 @@ def create_new_hmm_list(hmm_list_dir, hmm_list):
       name = os.path.basename(line)
       output.write("%s/%s\n" % ("/home/hmm_list/", name))
   output.close()    
-  os.system('chmod 0777 %s' % output.name)
+  run_cmd('chmod 0777 %s' % output.name)
   return output
 
 def run_docker(options):  
-  os.system(options.cmd_string)
-  os.system('rm %s' % options.temp_list)
+  run_cmd(options.cmd_string)
+  run_cmd('rm %s' % options.temp_list)
   
 if __name__ == '__main__': 
   start_time = time.time()
@@ -120,7 +127,6 @@ if __name__ == '__main__':
   if options.docker == True:
     run_docker(options)
     exit(0)
-  import hg19util as hg19
   virus=options.virus
   if options.reference.find('<VIRUS>'):
      options.reference = options.reference.replace('<VIRUS>',virus)
@@ -130,10 +136,15 @@ if __name__ == '__main__':
   options.output_dir = os.path.abspath(options.output_dir)
   #Run BWA on input FASTQ files
   if options.bamfile is None:
-    print( "[Running BWA]: %f" % (time.time()-start_time))
-    os.system("bwa mem -t %d -M %s %s %s | samtools view -bS - > %s/%s.bam" % (options.cpus, options.reference, options.forward, options.reverse, options.output_dir, options.prefix))
-    print( "[Finished BWA]: %f" % (time.time()-start_time))
-    options.bamfile = "%s/%s.bam" % (options.output_dir, options.prefix)
+    print(f"[Running BWA]: {time.time() - start_time}")
+    output_file = os.path.join(options.output_dir, options.prefix + '.bam')
+    if not isfile(output_file):
+      run_cmd(f"bwa mem -M -t{options.cpus} {options.reference} {options.forward} {options.reverse}"
+              f" | samtools view -bS - > {output_file}")
+      print(f"[Finished BWA]: {time.time() - start_time}")
+    else:
+      print(f"{output_file} exists, skipping")
+    options.bamfile = output_file
   if options.chromosome_list is not None:
     options.chromosome_list = os.path.abspath(options.chromosome_list)
   if options.hmm_list is not None:
@@ -141,28 +152,35 @@ if __name__ == '__main__':
   
   #Identify transitive reads
   os.chdir(options.output_dir)
-  print( "[Identifying chimeric reads]: %f" % (time.time()-start_time)  )
-  os.system("python %s/scripts/get_trans_new.py --unknown %s.unknown.bam --data %s --trans %s.trans.bam --viral %s.viral.bam %s" % (vifi_dir, options.prefix, options.bamfile, options.prefix, options.prefix, "" if options.chromosome_list is None else "--chrom %s" % options.chromosome_list))
-  print( "[Finished identifying chimeric reads]: %f" % (time.time()-start_time)  )
+  print(( "[Identifying chimeric reads]: %f" % (time.time()-start_time)  ))
+  unknown_reads = f"{options.prefix}.unknown.bam"
+  trans_reads = f"{options.prefix}.trans.bam"
+  viral_reads = f"{options.prefix}.viral.bam"
+  if not isfile(unknown_reads) or not isfile(trans_reads) or not isfile(viral_reads):
+    run_cmd(f"python {vifi_dir}/scripts/get_trans_new.py --unknown {unknown_reads} "
+            f"--data {options.bamfile} --trans {trans_reads} --viral {viral_reads} "
+            f'{"" if options.chromosome_list is None else "--chrom %s" % options.chromosome_list}')
+    print(( "[Finished identifying chimeric reads]: %f" % (time.time()-start_time)  ))
+  else:
+    print(f"Output exists, skipping")
 
-  
   #Run HMMs, either use default HMMs found in directory or use list of HMMs given by user.  
   if options.disable_hmms == False:
-    print( "[Running HMMS]: %f" % (time.time()-start_time))
+    print(( "[Running HMMS]: %f" % (time.time()-start_time)))
     if options.hmm_list is None:
-      os.system("ls %s/%s/hmms/*.hmm > hmms.txt" % (reference_dir, virus))
+      run_cmd("ls %s/%s/hmms/*.hmm > hmms.txt" % (reference_dir, virus))
       options.hmm_list = 'hmms.txt'
     if not os.path.exists('tmp/'):
       os.mkdir('tmp/')  
-    os.system("python %s/scripts/run_hmms.py -t %d -b %s.unknown.bam -d tmp -H %s" % (vifi_dir, options.cpus, options.prefix, options.hmm_list))
-    print( "[Finished running HMMS]: %f" % (time.time()-start_time))
+    run_cmd("python %s/scripts/run_hmms.py -t %d -b %s.unknown.bam -d tmp -H %s" % (vifi_dir, options.cpus, options.prefix, options.hmm_list))
+    print(( "[Finished running HMMS]: %f" % (time.time()-start_time)))
     
   #Cluster reads
-  print( "[Cluster and identify integration points]: %f" % (time.time()-start_time))
-  os.system("python %s/scripts/merge_viral_reads.py --unknown %s.unknown.bam --trans %s.trans.bam --reduced tmp/temp/reduced.csv --map tmp/temp/unmapped.map --output %s.fixed.trans.bam" % (vifi_dir, options.prefix, options.prefix, options.prefix))
-  os.system("samtools sort -m 2G -@ %d %s.fixed.trans.bam > %s.fixed.trans.cs.bam" % (options.cpus, options.prefix, options.prefix))
-  os.system("samtools index %s.fixed.trans.cs.bam" % options.prefix)  
-  os.system("samtools sort -m 2G -@ %d %s.viral.bam > %s.viral.cs.bam" % (options.cpus, options.prefix, options.prefix))  
-  os.system("samtools index %s.viral.cs.bam" % options.prefix)
-  os.system("python %s/scripts/cluster_trans_new.py --data %s.fixed.trans.cs.bam --output %s.clusters.txt %s" % (vifi_dir, options.prefix, options.prefix, "" if options.chromosome_list is None else "--chrom %s" % options.chromosome_list))  
-  print( "[Finished cluster and identify integration points]: %f" % (time.time()-start_time))
+  print(( "[Cluster and identify integration points]: %f" % (time.time()-start_time)))
+  run_cmd("python %s/scripts/merge_viral_reads.py --unknown %s.unknown.bam --trans %s.trans.bam --map tmp/temp/unmapped.map --output %s.fixed.trans.bam" % (vifi_dir, options.prefix, options.prefix, options.prefix))
+  run_cmd("samtools sort -m 2G -@ %d %s.fixed.trans.bam > %s.fixed.trans.cs.bam" % (options.cpus, options.prefix, options.prefix))
+  run_cmd("samtools index %s.fixed.trans.cs.bam" % options.prefix)
+  run_cmd("samtools sort -m 2G -@ %d %s.viral.bam > %s.viral.cs.bam" % (options.cpus, options.prefix, options.prefix))
+  run_cmd("samtools index %s.viral.cs.bam" % options.prefix)
+  run_cmd("python %s/scripts/cluster_trans_new.py --data %s.fixed.trans.cs.bam --output %s.clusters.txt %s" % (vifi_dir, options.prefix, options.prefix, "" if options.chromosome_list is None else "--chrom %s" % options.chromosome_list))
+  print(( "[Finished cluster and identify integration points]: %f" % (time.time()-start_time)))

@@ -44,7 +44,6 @@
 ##This is a suite to load hg19 genome, genes, exons, repeat content and perform operations on this genome, compare variants
 
 from bisect import bisect_left
-from sets import Set
 from collections import defaultdict
 from time import clock
 import pysam
@@ -103,14 +102,14 @@ if REF == 'hg18' or REF == 'hg19':
 
 chr_id = {}
 chrName = {}
-def chrNum(chrname, mode='append'):
+def chrNum(chrname, mode='append') -> int:
     if chrname in chr_id:
         return chr_id[chrname]
     else:
         if mode == 'init':
-            cnum = len(chr_id)
+            cnum: int = len(chr_id)
         else:
-            cnum = 1000000 + len(chr_id)
+            cnum: int = 1000000 + len(chr_id)
         chr_id[chrname] = cnum
         chrName[cnum] = chrname
         return chr_id[chrname]
@@ -127,7 +126,7 @@ chrOffset = {}
 def absPos(chrname, pos=0):
     cnum = chrNum(chrname)
     if chrNum(chrname) not in chrOffset:
-        chrkeys = chrName.keys()
+        chrkeys = list(chrName.keys())
         chrkeys.sort()
         sumlen = sum([chrLen[c] for c in chrLen if c in chrOffset])
         for i in range(len(chrkeys)):
@@ -211,7 +210,7 @@ class interval(object):
                 self.strand = -1
             self.info = ll[3:]
         else:
-            raise(Exception("Invalid interval format" + str(line)))
+            raise Exception
 
     def load_pos(self, chrom, start, end, strand):
         self.chrom = chrom 
@@ -344,7 +343,7 @@ class interval(object):
         # logging.info("#TIME " + '%.3f\t'%clock() + " rep_content: init ")
         if self.chrom == 'chrM' or self.chrom == 'MT':
             return 5.0
-        if self.chrom.strip('chr') not in map(str, range(1,23))+['X'+'Y']:
+        if self.chrom.strip('chr') not in list(map(str, list(range(1,23))))+['X'+'Y']:
             return 1.0
         s34 = interval(self.chrom, self.start, max(self.start, self.end - 34))
         # logging.info("#TIME " + '%.3f\t'%clock() + " rep_content: to load duke ")
@@ -370,7 +369,7 @@ class interval(object):
         numiter = 0
         while hi - lo > 1:
             numiter += 1
-            p = (hi + lo) / 2
+            p = (hi + lo) // 2
             ctime = clock()
             m = interval(duke35[p])
             ictime += clock() - ctime
@@ -403,7 +402,7 @@ class interval(object):
         # logging.info("#TIME " + '%.3f\t'%clock() + " rep_content: done")
         # exit()
         if len_duke > 0:
-            return sum_duke / len_duke
+            return sum_duke // len_duke
         else:
             return 1.0
 
@@ -460,7 +459,7 @@ class interval_list(list, object):
                 ci = a
                 cl = []
                 if ai != sum([len(m[1]) for m in ml]) + 1:
-                    print "divergent", ai, str(a)
+                    print("divergent", ai, str(a))
                     exit()
             ci = ci.merge(a, extend)
             cl.append(a)
@@ -471,7 +470,7 @@ class interval_list(list, object):
     def repeats(self, count=1):
         activeq = []
         if activeq is None:
-            print "h1"
+            print("h1")
             exit()
         jinterval = None
         ilist = []
@@ -479,12 +478,12 @@ class interval_list(list, object):
             while len(activeq) > 0 and not a.intersects(activeq[0][1]):
                 heapq.heappop(activeq)
                 if activeq is None:
-                    print "h2"
+                    print("h2")
                     exit()
             if len(activeq) < count and jinterval is not None:
                 ilist.append((jinterval, copy.copy(aq)))
                 if activeq is None:
-                    print "h3"
+                    print("h3")
                     exit()
                 jinterval = None
             heapq.heappush(activeq, (-1 * a.start, a))
@@ -575,7 +574,7 @@ class interval_list(list, object):
     def get_repeat_content(self):
         try:
             duke35_file = open(duke35_filename)
-            print "counting repeats", clock()
+            print("counting repeats", clock())
             self.sort()
             sum_duke = [0.0 for i in self]
             len_duke = [0.0 for i in self]
@@ -598,7 +597,7 @@ class interval_list(list, object):
                     len_duke[j] += self[j].intersection(duke_int).size()
                     j += 1
             duke35_file.close()
-            return {self[i]:sum_duke[i] / len_duke[i] for i in range(len(interval_list))}
+            return {self[i]:sum_duke[i] // len_duke[i] for i in range(len(interval_list))}
         except:
             logging.warning("#TIME " + '%.3f\t'%clock() + " get_repeat_content: Unable to open mapability file \"" + duke35_filename + "\"." )
             duke35_exists[0] = False
@@ -608,24 +607,24 @@ class interval_list(list, object):
     def offsets(self):
         if self.offset is not None:
             return self.offset
-        gap = 0.1
-        hratio = 0.8
+        gap: float = 0.1
+        hratio: float = 0.8
 
         vlist = [i for i in self if chrNum(i.chrom) >= 100 and i.chrom[:3] != 'chr']
         hlist = [i for i in self if chrNum(i.chrom) < 100 or i.chrom[:3] == 'chr']
-        v_count = len([i for i in self if chrNum(i.chrom) >= 100 and i.chrom[:3] != 'chr'])
-        h_count = len(self) - v_count
-        h_sum = sum([i.size() for i in hlist])
-        v_sum = sum([i.size() for i in vlist])
+        v_count: int = len([i for i in self if chrNum(i.chrom) >= 100 and i.chrom[:3] != 'chr'])
+        h_count: int = len(self) - v_count
+        v_sum: int = sum([i.size() for i in vlist])
+        h_sum: int = sum([i.size() for i in hlist])
 
-        hK = len([i for i in hlist if i.size() < h_sum * gap / max(1, h_count)])
-        hS = sum([i.size() for i in hlist if i.size > h_sum * gap / max(1, h_count)])
-        min_hsize = hS / (max(1, h_count) / gap - hK)
+        hK: int = len([i for i in hlist if i.size() < h_sum * gap / max(1, h_count)])
+        hS: int = sum([i.size() for i in hlist if i.size > h_sum * gap / max(1, h_count)])
+        min_hsize = hS // (max(1, h_count) // gap - hK)
         h_sum = hS + hK * min_hsize
-        
+
         vK = len([i for i in vlist if i.size() < v_sum * gap / max(1, v_count)])
         vS = sum([i.size() for i in vlist if i.size > v_sum * gap / max(1, v_count)])
-        min_vsize = vS / (max(1, v_count) / gap - vK)
+        min_vsize = vS // (max(1, v_count) // gap - vK)
         v_sum = vS + vK * min_vsize
 
 
@@ -642,12 +641,12 @@ class interval_list(list, object):
         vpos = v_start + (vgap / 2) * vscale
         for i in hlist:
             isize = max(i.size(), min_hsize)
-            offset[i] = (hpos, hpos + ((1 - gap) * isize / h_sum) * hscale)
-            hpos = hpos + ((1 - gap) * isize / h_sum + hgap) * hscale
+            offset[i] = (hpos, hpos + ((1 - gap) * isize // h_sum) * hscale)
+            hpos = hpos + ((1 - gap) * isize // h_sum + hgap) * hscale
         for i in vlist:
             isize = max(i.size(), min_vsize)
-            offset[i] = (vpos, vpos + ((1 - gap) * isize / v_sum) * vscale)
-            vpos = vpos + ((1 - gap) * isize / v_sum + vgap) * vscale
+            offset[i] = (vpos, vpos + ((1 - gap) * isize // v_sum) * vscale)
+            vpos = vpos + ((1 - gap) * isize // v_sum + vgap) * vscale
         self.offset = offset
         # for i in self:
         #     print str(i), offset[i], i.size(), hgap, h_sum, hscale, gap, hpos, vpos
@@ -659,7 +658,7 @@ class interval_list(list, object):
         for i in self:
             if i.intersects(interval(chrom, max(0, pos - 1), pos)):
                 o = offset[i]
-                return (o[1] * (pos - i.start) + o[0] * (i.end - pos)) / (i.end - i.start)
+                return (o[1] * (pos - i.start) + o[0] * (i.end - pos)) // (i.end - i.start)
         return None
 
     def offset_breaks(self):
@@ -688,7 +687,7 @@ class interval_list(list, object):
                 continue
             if i in hlist and iprev.chrom == i.chrom:
                 breaks.append((offset[i][0] - hscale * hgap / 2, ':', i.chrom))
-                print str(i), str(iprev), i in hlist, iprev.chrom == i.chrom
+                print(str(i), str(iprev), i in hlist, iprev.chrom == i.chrom)
             elif i in hlist and iprev.chrom != i.chrom:
                 breaks.append((offset[i][0] - hscale * hgap / 2, '--', i.chrom))
             elif i in vlist and iprev in hlist:

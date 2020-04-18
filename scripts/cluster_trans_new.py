@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 
-#cluster reads if consective reads have start position difference of less than 300bp regardless of strand                       
+#cluster reads if consective reads have start position difference of less than 300bp regardless of strand
+
+from functools import cmp_to_key
 
 import pysam
 import argparse
 from time import clock
 from collections import defaultdict, Counter
-from sets import Set
 import re
 
 import hg19util as hg
@@ -34,7 +35,7 @@ args = parser.parse_args()
 bamFile = pysam.Samfile(args.dataName[0], 'rb')
 outFile = open(args.outputName[0], 'w')
 rangeFile = open(args.outputName[0] + ".range", 'w')
-hg19refs = Set(map(lambda x: 'chr' + str(x), range(1,23) + ['X', 'Y', 'M']) + map(str, range(1,23) +  ['X', 'Y']))
+hg19refs = set(['chr' + str(x) for x in list(range(1,23)) + ['X', 'Y', 'M']] + list(map(str, list(range(1,23)) +  ['X', 'Y'])))
 if args.chrom_list is not None:
   input = open(args.chrom_list[0], 'r')
   foo = [hg19refs.add(l) for l in input.next().strip().split(' ')]
@@ -86,9 +87,9 @@ def find_true_breakpoint_range(reads):
       forward.update(read.positions)
       if is_split == True:
         forward[read.positions[-1]]+=10000      
-    max_forward = forward.items()    
+    max_forward = list(forward.items())    
     max_forward.sort()
-    max_reverse = reverse.items()
+    max_reverse = list(reverse.items())
     max_reverse.sort()
     ranges = [-1, -1]
     splits = [-1, -1]
@@ -134,7 +135,7 @@ def clean_genomic_cluster (clist):
         rmin = -1
 #        ls = largest_clean_subset(clist)
 #        if ls[1] + ls[2] >MIN_SUPPORT:
-        if len(clist) > MIN_SUPPORT and len(Set([a.qname for a in clist])) > MIN_SUPPORT:
+        if len(clist) > MIN_SUPPORT and len(set([a.qname for a in clist])) > MIN_SUPPORT:
                 return True
         return False
 
@@ -143,7 +144,7 @@ clusterList = []
 clist = []
 caln = None
 vlist = defaultdict(lambda: [], {})
-vreads = defaultdict(lambda: Set([]), {})
+vreads = defaultdict(lambda: set([]), {})
 
 for a in bamFile:
         vlist[(a.qname, a.is_read1)].append(a)
@@ -163,9 +164,10 @@ for a in bamFile:
 if caln is not None and (a.pos > caln.pos + 300 or caln.tid != a.tid) and clean_genomic_cluster(clist):
         clusterList.append(clist)
 
-clusterList.sort(lambda x, y: hg.interval(bamFile.getrname(x[0].tid), x[0].pos, x[-1].pos + x[-1].infer_query_length()) > hg.interval(bamFile.getrname(y[0].tid), y[0].pos, y[-1].pos + y[-1].infer_query_length()))
+# clusterList.sort(key=cmp_to_key(lambda x, y: hg.interval(bamFile.getrname(x[0].tid), x[0].pos, x[-1].pos + x[-1].infer_query_length()) > hg.interval(bamFile.getrname(y[0].tid), y[0].pos, y[-1].pos + y[-1].infer_query_length())))
+clusterList.sort(key=lambda x: hg.interval(bamFile.getrname(x[0].tid), x[0].pos, x[-1].pos + x[-1].infer_query_length()), reverse=True)
 
-vsuper = {v: Set([v2 for v2 in vreads if v2 != v and len(vreads[v]) < len(vreads[v2]) and vreads[v].issubset(vreads[v2])]) for v in vreads}
+vsuper = {v: set([v2 for v2 in vreads if v2 != v and len(vreads[v]) < len(vreads[v2]) and vreads[v].issubset(vreads[v2])]) for v in vreads}
 vequaldict = {}
 vequal = []
 for v in vreads:
@@ -177,7 +179,7 @@ for v in vreads:
                         inserted = True
                         break
         if not inserted:
-                vset = (v, Set([v]))
+                vset = (v, set(v))
                 vequal.append(vset)
                 vequaldict[v] = vset
 rangeFile.write('Chr,Min,Max,Split1,Split2\n')
@@ -190,7 +192,7 @@ for x in range(21):
 
 clusterSets = []
 for c in clusterList:
-        clusterSets.append(Set([a.qname for a in c]))
+        clusterSets.append(set([a.qname for a in c]))
 
 intersectionGraph = defaultdict(lambda: [], {})
 cluster_duke35 = [hg.interval(bamFile.getrname(c[0].tid), c[0].pos, c[-1].pos + c[-1].infer_query_length()).rep_content()
@@ -205,10 +207,10 @@ for ci in range(len(clusterList)):
         for a in c:
                 for a2 in vlist[(a.qname, not a.is_read1)]:
                         vcount[bamFile.getrname(a2.tid)].append(a2)
-        vrep = Set([v for v in vcount.keys() if len(Set([a.qname for a in vcount[v]])) > MIN_SUPPORT
+        vrep = set([v for v in list(vcount.keys()) if len(set([a.qname for a in vcount[v]])) > MIN_SUPPORT
                     and len([a for a in vcount[v] if a.is_reverse]) > -1 and len([a for a in vcount[v] if not a.is_reverse]) > -1
                    ]
-                  )
+                )
         cOvlList = []
         cInList = []
         cOutList = []
@@ -238,11 +240,11 @@ for ci in range(len(clusterList)):
         ls = largest_clean_subset(c)
         cs = (len([a for a in c if not a.is_reverse]), len([a for a in c if a.is_reverse]))
         vplist = [(v, len(vcount[v]), min([a2.pos for a2 in vcount[v] if a2.is_reverse]+[100000000000]), max([-1]+[a2.pos+(a2.infer_query_length() if a2.infer_query_length() is not None else a2.qlen) for a2 in vcount[v] if not a2.is_reverse])) for v in vrep]
-        vplist.sort(lambda x, y: y[1] - x[1])
+        vplist.sort(key=lambda x: x[1])
         frbin[cs] += 1
         outFile.write("##==========================================================================================================================================================================================================================\n")
         #outFile.write('\t'.join(map(str, [bamFile.getrname(c[0].tid), c[0].pos, c[-1].pos + c[-1].infer_query_length(), len(Set([a.qname for a in c])), cs[0], cs[1], ls[1], ls[2], len([v for v in vcount if len(vcount[v]) > 3]), len(vrep), len(cOvlList), len(cInList), len(cOutList), 1/cluster_duke35[ci], maxOvl, maxOvlc] + vplist + cOvlList + cInList + cOutList)) + '\n')   
-        outFile.write('\t'.join(map(str, [bamFile.getrname(c[0].tid), c[0].pos, c[-1].pos + c[-1].infer_query_length(), len(Set([a.qname for a in c])), cs[0], cs[1]])) + '\n')
+        outFile.write('\t'.join(map(str, [bamFile.getrname(c[0].tid), c[0].pos, c[-1].pos + c[-1].infer_query_length(), len(set([a.qname for a in c])), cs[0], cs[1]])) + '\n')
         for a in c:
                 outFile.write('##' + '\t'.join(map(str, [a.qname, bamFile.getrname(a.tid), a.pos, not a.is_reverse, a.is_read1])) + '\n')
         for v in vcount:
@@ -252,7 +254,7 @@ for ci in range(len(clusterList)):
 outFile.close()
 bamFile.close()
 rangeFile.close()
-print len(clusterList)
+print(len(clusterList))
 
 #for x in range(21):
 #        for y in range(21):
